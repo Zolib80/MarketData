@@ -1,75 +1,69 @@
-#include "web_socket.hpp"
+#include "web_socket.h"
 #include <iostream>
 #include <mutex>
-#include <condition_variable>
 
-web_socket::web_socket(const std::string& url) : isConnected(false) {}
+WebSocket::WebSocket(const std::string& url) : is_connected_(false) {}
 
-web_socket::~web_socket() {
+WebSocket::~WebSocket() {
     close();
 }
 
-bool web_socket::connect() {
-    ws.setUrl(URL);
-    ws.setOnMessageCallback([this](const ix::WebSocketMessagePtr& message) {
+bool WebSocket::connect() {
+    ws_.setUrl(URL);
+    ws_.setOnMessageCallback([this](const ix::WebSocketMessagePtr& message) {
         if (message->type == ix::WebSocketMessageType::Message) {
-            {
-                std::lock_guard<std::mutex> lock(receiveMutex);
-                receivedMessage = message->str;
-                isMessageReceived = true;
-            }
-            receiveConditionVariable.notify_one();
+            std::lock_guard<std::mutex> lock(receive_mutex_);
+            received_messages_.push_back(message->str);
         } else if (message->type == ix::WebSocketMessageType::Open) {
-            std::cout << "WebSocket connected." << std::endl;
-            isConnected = true;
+            std::cout << "WebSocket connected.\n";
+            is_connected_ = true;
             send(SUBSCRIBE_MESSAGE);
-            setPingOptions();
+            set_ping_options();
         } else if (message->type == ix::WebSocketMessageType::Close) {
-            std::cout << "WebSocket closed." << std::endl;
-            std::cout << "  Code: " << message->closeInfo.code << std::endl;
-            std::cout << "  Reason: " << message->closeInfo.reason << std::endl;
-            std::cout << "  Initiated remotely: " << message->closeInfo.remote << std::endl;
-            isConnected = false;
+            std::cout << "WebSocket closed.\n";
+            std::cout << "  Code: " << message->closeInfo.code << '\n';
+            std::cout << "  Reason: " << message->closeInfo.reason << '\n';
+            std::cout << "  Initiated remotely: " << message->closeInfo.remote << '\n';
+            is_connected_ = false;
         } else if (message->type == ix::WebSocketMessageType::Error) {
-            std::cerr << "WebSocket Error:" << std::endl;
-            std::cerr << "  Retries: " << message->errorInfo.retries << std::endl;
-            std::cerr << "  Wait Time: " << message->errorInfo.wait_time << std::endl;
-            std::cerr << "  HTTP Status: " << message->errorInfo.http_status << std::endl;
-            std::cerr << "  Reason: " << message->errorInfo.reason << std::endl;
-            std::cerr << "  Decompression Error: " << message->errorInfo.decompressionError << std::endl;
-            isConnected = false;
+            std::cerr << "WebSocket Error:\n";
+            std::cerr << "  Retries: " << message->errorInfo.retries << '\n';
+            std::cerr << "  Wait Time: " << message->errorInfo.wait_time << '\n';
+            std::cerr << "  HTTP Status: " << message->errorInfo.http_status << '\n';
+            std::cerr << "  Reason: " << message->errorInfo.reason << '\n';
+            std::cerr << "  Decompression Error: " << message->errorInfo.decompressionError << '\n';
+            is_connected_ = false;
         } else if (message->type == ix::WebSocketMessageType::Pong) {
-            std::cout << "Received Pong: " << message->str << std::endl;
-            isConnected = true;
+            std::cout << "Received Pong: " << message->str << '\n';
+            is_connected_ = true;
         }
     });
-    ws.start();
+    ws_.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    return isConnected;
+    return is_connected_;
 }
 
-void web_socket::close() {
-    ws.stop();
-    isConnected = false;
+void WebSocket::close() {
+    ws_.stop();
+    is_connected_ = false;
 }
 
-void web_socket::send(const std::string& message) {
-    if (isConnected) {
-        ws.sendText(message);
+void WebSocket::send(const std::string& message) {
+    if (is_connected_) {
+        ws_.sendText(message);
     } else {
-        std::cerr << "Cannot send: not connected." << std::endl;
+        std::cerr << "Cannot send: not connected.\n";
     }
 }
 
-std::string web_socket::recv() {
-    std::unique_lock<std::mutex> lock(receiveMutex);
-    receiveConditionVariable.wait(lock, [this]{ return isMessageReceived; });
-    isMessageReceived = false;
-    return receivedMessage;
+bool WebSocket::recv(std::vector<std::string>& messages) {
+    std::unique_lock<std::mutex> lock(receive_mutex_);
+    std::swap(messages, received_messages_);
+    received_messages_.clear();
+    return !messages.empty();
 }
 
-void web_socket::setPingOptions() {
-    std::lock_guard<std::mutex> lock(configMutex);
-    ws.setPingInterval(pingIntervalSecs);
-    ws.setPingMessage(PING_MESSAGE, ix::SendMessageKind::Ping);
+void WebSocket::set_ping_options() {
+    ws_.setPingInterval(ping_interval_secs_);
+    ws_.setPingMessage(PING_MESSAGE, ix::SendMessageKind::Ping);
 }
