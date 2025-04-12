@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 #include <functional>
 #include <chrono>
@@ -7,29 +9,13 @@ using event_handler = std::function<void()>;
 using timestamp = std::chrono::time_point<std::chrono::high_resolution_clock, std::chrono::microseconds>;
 using duration_us = std::chrono::microseconds;
 
-inline duration_us operator"" _us(unsigned long long us) {
-    return duration_us(us);
-}
-
-inline duration_us operator"" _ns(unsigned long long ns) {
-    return std::chrono::duration_cast<duration_us>(std::chrono::nanoseconds(ns));
-}
-
-inline duration_us operator"" _ms(unsigned long long ms) {
-    return std::chrono::duration_cast<duration_us>(std::chrono::milliseconds(ms));
-}
-
-inline duration_us operator"" _s(unsigned long long s) {
-    return std::chrono::duration_cast<duration_us>(std::chrono::seconds(s));
-}
-
-inline duration_us operator"" _min(unsigned long long min) {
-    return std::chrono::duration_cast<duration_us>(std::chrono::minutes(min));
-}
-
-inline duration_us operator"" _h(unsigned long long h) {
-    return std::chrono::duration_cast<duration_us>(std::chrono::hours(h));
-}
+// Declare literal operators
+duration_us operator"" _us(unsigned long long us);
+duration_us operator"" _ns(unsigned long long ns);
+duration_us operator"" _ms(unsigned long long ms);
+duration_us operator"" _s(unsigned long long s);
+duration_us operator"" _min(unsigned long long min);
+duration_us operator"" _h(unsigned long long h);
 
 struct ScheduledEvent {
     event_handler handler;
@@ -39,9 +25,9 @@ struct ScheduledEvent {
 
 class EventLoop {
 public:
-    void schedule_event(void* key, duration_us delay, const event_handler& handler);
-    void schedule_repeating_event(void* key, duration_us delay, duration_us interval, const event_handler& handler);
-    void register_handler(const event_handler& handler);
+    void schedule_event(void* key, duration_us delay, event_handler&& handler);
+    void schedule_repeating_event(void* key, duration_us delay, duration_us interval, event_handler&& handler);
+    void register_handler(event_handler&& handler);
     void run();
     void stop();
     void remove_event(void* key);
@@ -52,5 +38,5 @@ private:
     bool is_running_ = false;
 
     void process_scheduled_events();
-    void process_simple_handlers() const;
+    void process_simple_handlers();
 };

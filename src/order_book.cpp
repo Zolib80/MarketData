@@ -9,8 +9,8 @@ void OrderBook::apply_snapshot(const nlohmann::json& snapshot_data) {
         for (const auto& bid : snapshot_data["b"]) {
             if (bid.is_array() && bid.size() == 2) {
                 try {
-                    price_t price(std::stod(bid[0].get<std::string>()));
-                    quantity_t quantity(std::stod(bid[1].get<std::string>()));
+                    price_t price{std::stod(bid[0].get<std::string>())};
+                    quantity_t quantity{std::stod(bid[1].get<std::string>())};
                     bids_[price] = quantity;
                 } catch (const std::exception& e) {
                     std::cerr << "Error parsing bid (snapshot): " << e.what() << '\n';
@@ -23,8 +23,8 @@ void OrderBook::apply_snapshot(const nlohmann::json& snapshot_data) {
         for (const auto& ask : snapshot_data["a"]) {
             if (ask.is_array() && ask.size() == 2) {
                 try {
-                    price_t price(std::stod(ask[0].get<std::string>()));
-                    quantity_t quantity(std::stod(ask[1].get<std::string>()));
+                    price_t price{std::stod(ask[0].get<std::string>())};
+                    quantity_t quantity{std::stod(ask[1].get<std::string>())};
                     asks_[price] = quantity;
                 } catch (const std::exception& e) {
                     std::cerr << "Error parsing ask (snapshot): " << e.what() << '\n';
@@ -41,8 +41,8 @@ void OrderBook::apply_delta(const nlohmann::json& delta_data) {
         for (const auto& bid_delta : delta_data["b"]) {
             if (bid_delta.is_array() && bid_delta.size() == 2) {
                 try {
-                    price_t price(std::stod(bid_delta[0].get<std::string>()));
-                    quantity_t quantity(std::stod(bid_delta[1].get<std::string>()));
+                    price_t price{std::stod(bid_delta[0].get<std::string>())};
+                    quantity_t quantity{std::stod(bid_delta[1].get<std::string>())};
                     if (quantity.value > 0) {
                         bids_[price] = quantity;
                     } else {
@@ -59,8 +59,8 @@ void OrderBook::apply_delta(const nlohmann::json& delta_data) {
         for (const auto& ask_delta : delta_data["a"]) {
             if (ask_delta.is_array() && ask_delta.size() == 2) {
                 try {
-                    price_t price(std::stod(ask_delta[0].get<std::string>()));
-                    quantity_t quantity(std::stod(ask_delta[1].get<std::string>()));
+                    price_t price{std::stod(ask_delta[0].get<std::string>())};
+                    quantity_t quantity{std::stod(ask_delta[1].get<std::string>())};
                     if (quantity.value > 0) {
                         asks_[price] = quantity;
                     } else {
