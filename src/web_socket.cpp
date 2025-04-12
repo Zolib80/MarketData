@@ -2,14 +2,14 @@
 #include <iostream>
 #include <mutex>
 
-WebSocket::WebSocket(const std::string& url) : is_connected_(false) {}
+WebSocket::WebSocket(const std::string& url) : url_(url), is_connected_(false) {}
 
 WebSocket::~WebSocket() {
     close();
 }
 
 bool WebSocket::connect() {
-    ws_.setUrl(URL);
+    ws_.setUrl(url_);
     ws_.setOnMessageCallback([this](const ix::WebSocketMessagePtr& message) {
         if (message->type == ix::WebSocketMessageType::Message) {
             std::lock_guard<std::mutex> lock(receive_mutex_);
@@ -17,8 +17,6 @@ bool WebSocket::connect() {
         } else if (message->type == ix::WebSocketMessageType::Open) {
             std::cout << "WebSocket connected.\n";
             is_connected_ = true;
-            send(SUBSCRIBE_MESSAGE);
-            set_ping_options();
         } else if (message->type == ix::WebSocketMessageType::Close) {
             std::cout << "WebSocket closed.\n";
             std::cout << "  Code: " << message->closeInfo.code << '\n';
@@ -56,14 +54,13 @@ void WebSocket::send(const std::string& message) {
     }
 }
 
-bool WebSocket::recv(std::vector<std::string>& messages) {
+void WebSocket::recv(std::vector<std::string>& messages) {
     std::unique_lock<std::mutex> lock(receive_mutex_);
     std::swap(messages, received_messages_);
     received_messages_.clear();
-    return !messages.empty();
 }
 
-void WebSocket::set_ping_options() {
-    ws_.setPingInterval(ping_interval_secs_);
-    ws_.setPingMessage(PING_MESSAGE, ix::SendMessageKind::Ping);
+void WebSocket::set_ping_options(int ping_interval_secs, const std::string& ping_message) {
+    ws_.setPingInterval(ping_interval_secs);
+    ws_.setPingMessage(ping_message, ix::SendMessageKind::Ping);
 }

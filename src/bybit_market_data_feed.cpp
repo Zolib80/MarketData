@@ -12,42 +12,130 @@
 #include <chrono>
 #include <mutex>
 #include <functional>
+#include <iomanip>
 
-
-BybitMarketDataFeed::BybitMarketDataFeed(EventLoop& event_loop)
-    : event_loop_(event_loop)
-    , snapshot_received_(false)
-    , order_book_()
-    , ws(WebSocket::URL) {}
+BybitMarketDataFeed::BybitMarketDataFeed(EventLoop& event_loop, std::vector<const Instrument*>&& instruments_to_subscribe)
+    : event_loop_(event_loop) // We need this later for the time
+    , order_books_()
+    , ws_(BASE_URL)
+    , instruments_to_subscribe_(std::move(instruments_to_subscribe)) {}
 
 void BybitMarketDataFeed::run() {
-    if (!ws.is_connected()) {
-        ws.connect();
-        std::cout << "Connected to Bybit.\n";
-        return;
-    }
-    ws.recv(received_messages_buffer_);
-    for (const auto& rawMessage : received_messages_buffer_) {
-        nlohmann::json jsonMessage = nlohmann::json::parse(rawMessage);
-        if (jsonMessage.contains("topic") && jsonMessage["topic"] == "orderbook.50.BTCUSDT") {
-            if (jsonMessage["type"] == "snapshot") {
-                order_book_.apply_snapshot(jsonMessage["data"]);
-                snapshot_received_ = true;
-            } else if (jsonMessage["type"] == "delta" && snapshot_received_) {
-                order_book_.apply_delta(jsonMessage["data"]);
-            } else if (jsonMessage["type"] == "delta" && !snapshot_received_) {
-                std::cerr << "Received delta before snapshot. Ignoring.\n";
-            } else if (jsonMessage.contains("success") && jsonMessage["success"] == true && jsonMessage["op"] == "subscribe") {
-                std::cout << "Subscription successful.\n";
-            } else if (jsonMessage.contains("op") && jsonMessage["op"] == "ping") {
-                // Pong message is handled by the web_socket class
-            } else {
-                std::cout << "Received unknown message: " << rawMessage << '\n';
+    if (!ws_.is_connected()) {
+        if (ws_.connect()) {
+            std::cout << "Connected to Bybit.\n";
+
+            nlohmann::json subscribe_message_json;
+            subscribe_message_json["op"] = "subscribe";
+            subscribe_message_json["args"] = nlohmann::json::array();
+            for (const Instrument* instrument : instruments_to_subscribe_) {
+                subscribe_message_json["args"].push_back("orderbook.50." + instrument->name_);
+                instrument_map_[instrument->name_] = instrument;
             }
-        } else if (jsonMessage.contains("success")) {
-            std::cout << "General success message: " << rawMessage << '\n';
+            std::string subscribe_message = subscribe_message_json.dump();
+            std::cout << "Subscribing to: " << subscribe_message << '\n';
+            ws_.send(subscribe_message);
+
+            return;
         } else {
-            std::cout << "Received other message: " << rawMessage << '\n';
+            std::cerr << "Failed to connect to Bybit.\n";
+            return;
         }
     }
+
+    ws_.recv(received_messages_buffer_);
+    for (const auto& rawMessage : received_messages_buffer_) {
+        nlohmann::json jsonMessage = nlohmann::json::parse(rawMessage);
+        if (jsonMessage.contains("topic")) {
+            std::string topic = jsonMessage["topic"].get<std::string>();
+            if (topic.rfind("orderbook.50.", 0) == 0) {
+                std::string instrument_name = topic.substr(std::string("orderbook.50.").length());
+                const Instrument* instrument = instrument_map_[instrument_name];
+                
+                if (instrument == nullptr) {
+                    std::cerr << "Unknown instrument: " << instrument_name << '\n';
+                    continue;
+                }
+                
+                if (jsonMessage["type"] == "snapshot") {
+                    OrderBook& current_order_book = order_books_.emplace(instrument, OrderBook(instrument)).first->second;
+                    apply_snapshot(current_order_book, jsonMessage["data"]);
+                } else if (jsonMessage["type"] == "delta") {
+                    auto it = order_books_.find(instrument);
+
+                    if (it != order_books_.end()) {
+                        OrderBook& current_order_book = it->second;
+                        apply_delta(current_order_book, jsonMessage["data"]);
+                    } else {
+                        std::cerr << "Received delta before snapshot for " << instrument_name << ". Ignoring.\n";
+                    }
+
+                } else if (jsonMessage.contains("success") && jsonMessage["success"] == true && jsonMessage["op"] == "subscribe") {
+                    std::cout << "Subscription successful for: " << rawMessage << '\n';
+                } else if (jsonMessage.contains("op") && jsonMessage["op"] == "ping") {
+                    // Pong handled by WebSocket class
+                } else {
+                    std::cout << "Received unknown message: " << rawMessage << '\n';
+                }
+            } else if (jsonMessage.contains("success")) {
+                std::cout << "General success message: " << rawMessage << '\n';
+            } else {
+                std::cout << "Received other message: " << rawMessage << '\n';
+            }
+        }
+    }
+}
+
+void BybitMarketDataFeed::apply_snapshot(OrderBook& order_book, const nlohmann::json& snapshot_data) {
+    if (snapshot_data.contains("b") && snapshot_data["b"].is_array()) {
+        for (const auto& bid : snapshot_data["b"]) {
+            if (bid.is_array() && bid.size() == 2) {
+                price_t price{std::stod(bid[0].get<std::string>())};
+                quantity_t quantity{std::stod(bid[1].get<std::string>())};
+                order_book.bids_[price] = quantity;
+            }
+        }
+    }
+
+    if (snapshot_data.contains("a") && snapshot_data["a"].is_array()) {
+        for (const auto& ask : snapshot_data["a"]) {
+            if (ask.is_array() && ask.size() == 2) {
+                price_t price{std::stod(ask[0].get<std::string>())};
+                quantity_t quantity{std::stod(ask[1].get<std::string>())};
+                order_book.asks_[price] = quantity;
+            }
+        }
+    }
+    std::cout << "Snapshot applied for " << order_book.instrument_->name_ << ".\n";
+}
+
+void BybitMarketDataFeed::apply_delta(OrderBook& order_book, const nlohmann::json& delta_data) {
+    if (delta_data.contains("b") && delta_data["b"].is_array()) {
+        for (const auto& bid_delta : delta_data["b"]) {
+            if (bid_delta.is_array() && bid_delta.size() == 2) {
+                price_t price{std::stod(bid_delta[0].get<std::string>())};
+                quantity_t quantity{std::stod(bid_delta[1].get<std::string>())};
+                if (quantity.value > 0) {
+                    order_book.bids_[price] = quantity;
+                } else {
+                    order_book.bids_.erase(price);
+                }
+            }
+        }
+    }
+
+    if (delta_data.contains("a") && delta_data["a"].is_array()) {
+        for (const auto& ask_delta : delta_data["a"]) {
+            if (ask_delta.is_array() && ask_delta.size() == 2) {
+                price_t price{std::stod(ask_delta[0].get<std::string>())};
+                quantity_t quantity{std::stod(ask_delta[1].get<std::string>())};
+                if (quantity.value > 0) {
+                    order_book.asks_[price] = quantity;
+                } else {
+                    order_book.asks_.erase(price);
+                }
+            }
+        }
+    }
+    std::cout << "Delta applied for " << order_book.instrument_->name_ << ".\n";
 }
