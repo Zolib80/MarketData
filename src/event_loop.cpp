@@ -26,12 +26,13 @@ duration_us operator"" _h(unsigned long long h) {
     return std::chrono::duration_cast<duration_us>(std::chrono::hours(h));
 }
 
+EventLoop::EventLoop(bool& running) : is_running_(running) {}
+
 void EventLoop::schedule_event(void* key, duration_us delay, event_handler&& handler) {
     schedule_repeating_event(key, delay, 0_us, std::move(handler));
 }
 
 void EventLoop::schedule_repeating_event(void* key, duration_us delay, duration_us interval, event_handler&& handler) {
-    timestamp now = std::chrono::time_point_cast<duration_us>(std::chrono::high_resolution_clock::now());
     timestamp first_execution = now + delay;
     scheduled_events_.emplace(key, ScheduledEvent{std::move(handler), interval, first_execution});
 }
@@ -45,8 +46,8 @@ void EventLoop::register_handler(event_handler&& handler) {
 }
 
 void EventLoop::run() {
-    is_running_ = true;
     while (is_running_) {
+        now = std::chrono::time_point_cast<duration_us>(std::chrono::high_resolution_clock::now());
         process_scheduled_events();
         process_simple_handlers();
         std::this_thread::sleep_for(10_us);
@@ -58,8 +59,6 @@ void EventLoop::stop() {
 }
 
 void EventLoop::process_scheduled_events() {
-    timestamp now = std::chrono::time_point_cast<duration_us>(std::chrono::high_resolution_clock::now());
-    
     for (auto it = scheduled_events_.begin(); it != scheduled_events_.end(); ) {
         ScheduledEvent& event = it->second;
         
@@ -81,4 +80,8 @@ void EventLoop::process_simple_handlers() {
     for (auto& handler : simple_handlers_) {
         handler();
     }
+}
+
+timestamp EventLoop::get_current_time() const {
+    return now;
 }

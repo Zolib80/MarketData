@@ -14,11 +14,19 @@
 #include <functional>
 #include <iomanip>
 
-BybitMarketDataFeed::BybitMarketDataFeed(EventLoop& event_loop, std::vector<const Instrument*>&& instruments_to_subscribe)
-    : event_loop_(event_loop) // We need this later for the time
+BybitMarketDataFeed::BybitMarketDataFeed(EventLoop& event_loop, std::vector<const Instrument*>&& instruments_to_subscribe, MessageRecorder* recorder)
+    : event_loop_(event_loop)
     , order_books_()
     , ws_(BASE_URL)
-    , instruments_to_subscribe_(std::move(instruments_to_subscribe)) {}
+    , instruments_to_subscribe_(std::move(instruments_to_subscribe))
+    , message_recorder_(recorder) {}
+
+BybitMarketDataFeed::~BybitMarketDataFeed()
+{
+    if (message_recorder_) {
+        message_recorder_->finalize_recording(event_loop_.get_current_time());
+    }
+}
 
 void BybitMarketDataFeed::run() {
     if (!ws_.is_connected()) {
@@ -34,6 +42,9 @@ void BybitMarketDataFeed::run() {
             }
             std::string subscribe_message = subscribe_message_json.dump();
             std::cout << "Subscribing to: " << subscribe_message << '\n';
+            if (message_recorder_) {
+                message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Outgoing, subscribe_message);
+            }
             ws_.send(subscribe_message);
 
             return;
@@ -45,6 +56,9 @@ void BybitMarketDataFeed::run() {
 
     ws_.recv(received_messages_buffer_);
     for (const auto& rawMessage : received_messages_buffer_) {
+        if (message_recorder_) {
+            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Incoming, rawMessage);
+        }
         nlohmann::json jsonMessage = nlohmann::json::parse(rawMessage);
         if (jsonMessage.contains("topic")) {
             std::string topic = jsonMessage["topic"].get<std::string>();

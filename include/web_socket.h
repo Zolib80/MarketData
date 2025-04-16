@@ -10,6 +10,14 @@ public:
     WebSocket(const std::string& url);
     ~WebSocket();
 
+    // Disable copy semantics
+    WebSocket(const WebSocket&) = delete;
+    WebSocket& operator=(const WebSocket&) = delete;
+
+    // Disable move semantics
+    WebSocket(WebSocket&&) = delete;
+    WebSocket& operator=(WebSocket&&) = delete;
+
     bool is_connected() const { return is_connected_; }
     bool connect();
     void close();
