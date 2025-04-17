@@ -4,7 +4,6 @@
 
 #include <vector>
 #include <functional>
-#include <chrono>
 #include <map>
 
 using event_handler = std::function<void()>;

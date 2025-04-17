@@ -6,18 +6,14 @@
 #include <../libs/ixwebsocket/IXWebSocket.h>
 #include <../libs/json/json.hpp>
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <chrono>
-#include <mutex>
-#include <functional>
-#include <iomanip>
-
-BybitMarketDataFeed::BybitMarketDataFeed(EventLoop& event_loop, std::vector<const Instrument*>&& instruments_to_subscribe, MessageRecorder* recorder)
+BybitMarketDataFeed::BybitMarketDataFeed(
+    EventLoop& event_loop,
+    MarketDataSource* data_source,
+    std::vector<const Instrument*>&& instruments_to_subscribe,
+    MessageRecorder* recorder)
     : event_loop_(event_loop)
     , order_books_()
-    , ws_(BASE_URL)
+    , data_source_(data_source)
     , instruments_to_subscribe_(std::move(instruments_to_subscribe))
     , message_recorder_(recorder) {}
 
@@ -29,8 +25,19 @@ BybitMarketDataFeed::~BybitMarketDataFeed()
 }
 
 void BybitMarketDataFeed::run() {
-    if (!ws_.is_connected()) {
-        if (ws_.connect()) {
+    if (!data_source_) {
+        std::cerr << "Error: No data source set.\n";
+        return;
+    }
+
+    if (is_playback_finished_) {
+        std::cout << "Playback already finished. Finishing event loop.\n";
+        event_loop_.stop();
+        return;
+    }
+
+    if (!data_source_->is_connected()) {
+        if (data_source_->connect()) {
             std::cout << "Connected to Bybit.\n";
 
             nlohmann::json subscribe_message_json;
@@ -45,8 +52,8 @@ void BybitMarketDataFeed::run() {
             if (message_recorder_) {
                 message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Outgoing, subscribe_message);
             }
-            ws_.send(subscribe_message);
-
+            data_source_->send(subscribe_message);
+            
             return;
         } else {
             std::cerr << "Failed to connect to Bybit.\n";
@@ -54,7 +61,12 @@ void BybitMarketDataFeed::run() {
         }
     }
 
-    ws_.recv(received_messages_buffer_);
+    data_source_->recv(received_messages_buffer_);
+    if (received_messages_buffer_.empty() && !data_source_->is_connected()) {
+        is_playback_finished_ = true;
+        std::cout << "Playback completed.\n";
+        return;
+    }
     for (const auto& rawMessage : received_messages_buffer_) {
         if (message_recorder_) {
             message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Incoming, rawMessage);

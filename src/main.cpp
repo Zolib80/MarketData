@@ -1,12 +1,13 @@
-#include <iostream>
-
 #include "bybit_market_data_feed.h"
 #include "event_loop.h" 
+#include "file_playback.h"
+#include "web_socket.h"
 
+#include <iostream>
 #include <csignal>
-#include <atomic>
 
 bool g_running = true;
+bool is_replay = false;
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
@@ -27,14 +28,24 @@ int main() {
     
     EventLoop event_loop(g_running);
 
-    auto now = std::chrono::system_clock::now();
-    std::string filename = std::format("bybit_live_{:%Y%m%d_%H%M%S}.zbmd", now);
-    std::cout << "Recording to file: " << filename << '\n';
-
-    std::unique_ptr<MessageRecorder> recorder_ptr = std::make_unique<MessageRecorder>(filename);
+    std::string filename;
+    std::unique_ptr<MarketDataSource> data_source_ptr;
+    std::unique_ptr<MessageRecorder> recorder_ptr = nullptr;
+    
+    if (is_replay) {
+        filename = std::format("bybit_live_20250417_150141.977928174.zbmd");
+        data_source_ptr = std::make_unique<FilePlayback>(filename);
+    } else {
+        auto now = std::chrono::system_clock::now();
+        filename = std::format("bybit_live_{:%Y%m%d_%H%M%S}.zbmd", now);
+        std::cout << "Recording to file: " << filename << '\n';
+        data_source_ptr = std::make_unique<WebSocket>(BybitMarketDataFeed::BASE_URL);
+        recorder_ptr = std::make_unique<MessageRecorder>(filename);
+    }
 
     BybitMarketDataFeed marketDataFeed(
         event_loop,
+        data_source_ptr.get(),
         {&instrument_map["BTCUSDT"], &instrument_map["ETHUSDT"], &instrument_map["XRPUSDT"]},
         recorder_ptr.get()
     );

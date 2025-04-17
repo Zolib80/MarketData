@@ -1,12 +1,10 @@
 #pragma once
 
+#include "market_data_constants.h"
 #include "market_data_time.h"
 
 #include <fstream>
 #include <vector>
-
-constexpr uint32_t MAGIC_NUMBER = 0x7A626D64;
-constexpr uint8_t VERSION_NUMBER = 1;
 
 enum class MessageType : uint8_t {
     Incoming = 0,

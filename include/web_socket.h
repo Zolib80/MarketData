@@ -1,11 +1,9 @@
 #pragma once
 
-#include "queue.h"
+#include "market_data_source.h"
 #include <../libs/ixwebsocket/IXWebSocket.h>
-#include <string>
-#include <mutex>
 
-class WebSocket {
+class WebSocket : public MarketDataSource {
 public:
     WebSocket(const std::string& url);
     ~WebSocket();
@@ -18,11 +16,11 @@ public:
     WebSocket(WebSocket&&) = delete;
     WebSocket& operator=(WebSocket&&) = delete;
 
-    bool is_connected() const { return is_connected_; }
     bool connect();
     void close();
     void send(const std::string& message);
     void recv(std::vector<std::string>& messages);
+    bool is_connected() const { return is_connected_; }
     void set_ping_options(int interval, const std::string& message); 
 
 private:
