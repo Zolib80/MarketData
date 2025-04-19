@@ -43,8 +43,6 @@ FilePlayback::FilePlayback(EventLoop& event_loop, const std::string& filename)
 
     first_message_time_ = first_message_time_read;
     std::cout << "Connected to playback file: " << filename_ << '\n';
-
-    preload_messages();
 }
 
 FilePlayback::~FilePlayback() {
@@ -52,51 +50,14 @@ FilePlayback::~FilePlayback() {
 }
 
 void FilePlayback::connect() {
-    while (!is_connected_) {
-        for (auto& message : upcoming_messages_) {
-            switch (message.type) {
-                case MessageType::Connect:
-                is_connected_= true;
-                break;
-                case MessageType::Disconnect:
-                is_connected_= false;
-                break;
-                case MessageType::Incoming:
-                break;
-                case MessageType::Outgoing:
-                break;
-                default:
-                std::cerr << "Error: Unknown message type in playback file.\n";
-            }
-        };
-        preload_messages();
-    }
 }
 
 void FilePlayback::close() {
-    std::cout << "Closing playback file: " << filename_ << '\n';
-    for (auto& message : upcoming_messages_) {
-        switch (message.type) {
-            case MessageType::Connect:
-            is_connected_= true;
-            break;
-            case MessageType::Disconnect:
-            is_connected_= false;
-            break;
-            case MessageType::Incoming:
-            break;
-            case MessageType::Outgoing:
-            break;
-            default:
-            std::cerr << "Error: Unknown message type in playback file.\n";
-        }
-    };
-
-    preload_messages();
 }
 
 void FilePlayback::stop() {
     if (infile_.is_open()) {
+        std::cout << "Closing playback file: " << filename_ << '\n';
         infile_.close();
     }
     event_loop_.stop();
@@ -128,8 +89,6 @@ void FilePlayback::recv(std::vector<std::string>& messages) {
                 std::cerr << "Error: Unknown message type in playback file.\n";
         }
     };
-
-    preload_messages();
 }
 
 void FilePlayback::preload_messages()
@@ -164,4 +123,26 @@ void FilePlayback::preload_messages()
     };    
 
     return;
+}
+
+void FilePlayback::process_next_message()
+{   
+    preload_messages();
+
+    for (auto& message : upcoming_messages_) {
+        switch (message.type) {
+            case MessageType::Connect:
+                is_connected_= true;
+                break;
+            case MessageType::Disconnect:
+                is_connected_= false;
+                break;
+            case MessageType::Incoming:
+                break;
+            case MessageType::Outgoing:
+                break;
+            default:
+                std::cerr << "Error: Unknown message type in playback file.\n";
+        }
+    };
 }

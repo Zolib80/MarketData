@@ -18,8 +18,9 @@ public:
     void send(const std::string& message) override;
     void recv(std::vector<std::string>& messages) override;
     bool is_connected() const override { return is_connected_; }
+    void process_next_message();
     
-    private:
+private:
     struct Message {
         MessageType type;
         std::string content;

@@ -31,18 +31,9 @@ void BybitMarketDataFeed::run() {
         return;
     }
 
-    if (!data_source_->is_connected()) {
-        if (is_connected_) {
-            is_connected_ = false;
-            if(message_recorder_) {
-                message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
-            }
-            event_loop_.schedule_repeating_event(this, 0_us, 5_s, [this]() {
-                data_source_->connect();
-            });
-        }
-        return;
-    } else if (!is_connected_) {
+    bool data_source_connected = data_source_->is_connected();
+
+    if (data_source_connected && !is_connected_) {
         event_loop_.remove_event(this);
         is_connected_ = true;
         if(message_recorder_) {
@@ -110,6 +101,16 @@ void BybitMarketDataFeed::run() {
             }
         }
     }
+
+    if (received_messages_buffer_.empty() && !data_source_connected && is_connected_) {
+        is_connected_ = false;
+        if(message_recorder_) {
+            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
+        }
+        event_loop_.schedule_repeating_event(this, 0_us, 5_s, [this]() {
+            data_source_->connect();
+        });
+    }    
 }
 
 void BybitMarketDataFeed::apply_snapshot(OrderBook& order_book, const nlohmann::json& snapshot_data) {
