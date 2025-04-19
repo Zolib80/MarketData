@@ -16,11 +16,11 @@ public:
     WebSocket(WebSocket&&) = delete;
     WebSocket& operator=(WebSocket&&) = delete;
 
-    bool connect();
-    void close();
-    void send(const std::string& message);
-    void recv(std::vector<std::string>& messages);
-    bool is_connected() const { return is_connected_; }
+    void connect() override;
+    void close() override;
+    void send(const std::string& message) override;
+    void recv(std::vector<std::string>& messages) override;
+    bool is_connected() const override { return is_connected_; }
     void set_ping_options(int interval, const std::string& message); 
 
 private:

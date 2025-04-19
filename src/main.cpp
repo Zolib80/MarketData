@@ -7,7 +7,7 @@
 #include <csignal>
 
 bool g_running = true;
-bool is_replay = false;
+bool is_replay = true;
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {
@@ -33,7 +33,7 @@ int main() {
     std::unique_ptr<MessageRecorder> recorder_ptr = nullptr;
     
     if (is_replay) {
-        filename = std::format("bybit_live_20250417_150141.977928174.zbmd");
+        filename = std::format("bybit_live_20250419_141237.785708341.zbmd");
         data_source_ptr = std::make_unique<FilePlayback>(event_loop, filename);
     } else {
         auto now = std::chrono::system_clock::now();

@@ -25,7 +25,7 @@ FilePlayback::FilePlayback(EventLoop& event_loop, const std::string& filename)
 
     if (magic_number_read != MAGIC_NUMBER) {
         std::cerr << "Error: Invalid magic number in playback file.\n";
-        close();
+        stop();
         return;
     }
 
@@ -33,7 +33,7 @@ FilePlayback::FilePlayback(EventLoop& event_loop, const std::string& filename)
 
     if (version_number_read != VERSION_NUMBER) {
         std::cerr << "Error: Incompatible version number in playback file.\n";
-        close();
+        stop();
         return;
     }
 
@@ -42,19 +42,60 @@ FilePlayback::FilePlayback(EventLoop& event_loop, const std::string& filename)
     infile_.read(reinterpret_cast<char*>(&next_message_time_), sizeof(next_message_time_));
 
     first_message_time_ = first_message_time_read;
-    is_connected_ = true;
     std::cout << "Connected to playback file: " << filename_ << '\n';
+
+    preload_messages();
 }
 
 FilePlayback::~FilePlayback() {
-    close();
+    stop();
 }
 
-bool FilePlayback::connect() {
-    return true;
+void FilePlayback::connect() {
+    while (!is_connected_) {
+        for (auto& message : upcoming_messages_) {
+            switch (message.type) {
+                case MessageType::Connect:
+                is_connected_= true;
+                break;
+                case MessageType::Disconnect:
+                is_connected_= false;
+                break;
+                case MessageType::Incoming:
+                break;
+                case MessageType::Outgoing:
+                break;
+                default:
+                std::cerr << "Error: Unknown message type in playback file.\n";
+            }
+        };
+        preload_messages();
+    }
 }
 
 void FilePlayback::close() {
+    std::cout << "Closing playback file: " << filename_ << '\n';
+    for (auto& message : upcoming_messages_) {
+        switch (message.type) {
+            case MessageType::Connect:
+            is_connected_= true;
+            break;
+            case MessageType::Disconnect:
+            is_connected_= false;
+            break;
+            case MessageType::Incoming:
+            break;
+            case MessageType::Outgoing:
+            break;
+            default:
+            std::cerr << "Error: Unknown message type in playback file.\n";
+        }
+    };
+
+    preload_messages();
+}
+
+void FilePlayback::stop() {
     if (infile_.is_open()) {
         infile_.close();
     }
@@ -70,8 +111,32 @@ void FilePlayback::send(const std::string& message) {
 void FilePlayback::recv(std::vector<std::string>& messages) {
     messages.clear();
 
+    for (auto& message : upcoming_messages_) {
+        switch (message.type) {
+            case MessageType::Connect:
+                is_connected_= true;
+                break;
+            case MessageType::Disconnect:
+                is_connected_= false;
+                break;
+            case MessageType::Incoming:
+                messages.push_back(message.content);
+                break;
+            case MessageType::Outgoing:
+                break;
+            default:
+                std::cerr << "Error: Unknown message type in playback file.\n";
+        }
+    };
+
+    preload_messages();
+}
+
+void FilePlayback::preload_messages()
+{
+    upcoming_messages_.clear();
     if (!infile_.is_open() || infile_.eof()) {
-        close();
+        stop();
         return;
     }
 
@@ -88,15 +153,15 @@ void FilePlayback::recv(std::vector<std::string>& messages) {
         infile_.read(message.data(), message_length);
     
         if (infile_.gcount() == message_length) {
-            if (message_type == MessageType::Incoming) {
-                messages.push_back(message);
-            }
+            upcoming_messages_.emplace_back(Message{message_type, message});
         } else if (infile_.gcount() > 0) {
-            close();
+            stop();
             std::cerr << "Error reading message from playback file (incomplete read).\n";
         }
         if (!infile_.eof()) {
             infile_.read(reinterpret_cast<char*>(&next_message_time_), sizeof(next_message_time_));
         }
-    };
+    };    
+
+    return;
 }

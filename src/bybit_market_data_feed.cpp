@@ -15,7 +15,8 @@ BybitMarketDataFeed::BybitMarketDataFeed(
     , order_books_()
     , data_source_(data_source)
     , instruments_to_subscribe_(std::move(instruments_to_subscribe))
-    , message_recorder_(recorder) {}
+    , message_recorder_(recorder) 
+{}
 
 BybitMarketDataFeed::~BybitMarketDataFeed()
 {
@@ -33,13 +34,20 @@ void BybitMarketDataFeed::run() {
     if (!data_source_->is_connected()) {
         if (is_connected_) {
             is_connected_ = false;
-            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
+            if(message_recorder_) {
+                message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
+            }
+            event_loop_.schedule_repeating_event(this, 0_us, 5_s, [this]() {
+                data_source_->connect();
+            });
         }
-        data_source_->connect();
         return;
     } else if (!is_connected_) {
+        event_loop_.remove_event(this);
         is_connected_ = true;
-        message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Connect, "");
+        if(message_recorder_) {
+            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Connect, "");
+        }
         std::cout << "Connected to Bybit.\n";
 
         nlohmann::json subscribe_message_json;
@@ -62,6 +70,7 @@ void BybitMarketDataFeed::run() {
         if (message_recorder_) {
             message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Incoming, rawMessage);
         }
+        // std::cout << "Received message: " << rawMessage << '\n';
         nlohmann::json jsonMessage = nlohmann::json::parse(rawMessage);
         if (jsonMessage.contains("topic")) {
             std::string topic = jsonMessage["topic"].get<std::string>();

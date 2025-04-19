@@ -8,7 +8,7 @@ WebSocket::~WebSocket() {
     close();
 }
 
-bool WebSocket::connect() {
+void WebSocket::connect() {
     ws_.setUrl(url_);
     ws_.setOnMessageCallback([this](const ix::WebSocketMessagePtr& message) {
         if (message->type == ix::WebSocketMessageType::Message) {
@@ -36,9 +36,9 @@ bool WebSocket::connect() {
             is_connected_ = true;
         }
     });
+    std::cout << "Connecting to WebSocket at: " << url_ << '\n';
     ws_.start();
-    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-    return is_connected_;
+    return;
 }
 
 void WebSocket::close() {
