@@ -7,7 +7,7 @@
 #include <csignal>
 
 bool g_running = true;
-bool is_replay = false;
+bool is_replay = true;
 
 void signal_handler(int signal) {
     if (signal == SIGINT) {

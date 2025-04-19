@@ -24,20 +24,24 @@ bool FilePlayback::connect() {
     timestamp last_message_time_read;
 
     infile_.read(reinterpret_cast<char*>(&magic_number_read), sizeof(magic_number_read));
-    infile_.read(reinterpret_cast<char*>(&version_number_read), sizeof(version_number_read));
-    infile_.read(reinterpret_cast<char*>(&first_message_time_read), sizeof(first_message_time_read));
-    infile_.read(reinterpret_cast<char*>(&last_message_time_read), sizeof(last_message_time_read));
-
+    
     if (magic_number_read != MAGIC_NUMBER) {
         std::cerr << "Error: Invalid magic number in playback file.\n";
         close();
         return false;
     }
+
+    infile_.read(reinterpret_cast<char*>(&version_number_read), sizeof(version_number_read));
+    
     if (version_number_read != VERSION_NUMBER) {
         std::cerr << "Error: Incompatible version number in playback file.\n";
         close();
         return false;
     }
+    
+    infile_.read(reinterpret_cast<char*>(&first_message_time_read), sizeof(first_message_time_read));
+    infile_.read(reinterpret_cast<char*>(&last_message_time_read), sizeof(last_message_time_read));
+    infile_.read(reinterpret_cast<char*>(&next_message_time_), sizeof(next_message_time_));
 
     first_message_time_ = first_message_time_read;
     is_connected_ = true;
@@ -73,20 +77,24 @@ void FilePlayback::recv(std::vector<std::string>& messages) {
     uint32_t message_length;
     std::string message;
 
-    infile_.read(reinterpret_cast<char*>(&current_message_time), sizeof(current_message_time));
-    infile_.read(reinterpret_cast<char*>(&message_type), sizeof(message_type));
-    infile_.read(reinterpret_cast<char*>(&message_length), sizeof(message_length));
-    message.resize(message_length);
-    infile_.read(message.data(), message_length);
-
-    if (infile_.gcount() == message_length) {
-        messages.push_back(message);
-        if (previous_message_time_.time_since_epoch().count() != 0) {
-            std::this_thread::sleep_for(current_message_time - previous_message_time_);
+    current_message_time = next_message_time_;
+    while (!infile_.eof() && current_message_time == next_message_time_) {
+        infile_.read(reinterpret_cast<char*>(&message_type), sizeof(message_type));
+        infile_.read(reinterpret_cast<char*>(&message_length), sizeof(message_length));
+        message.resize(message_length);
+        infile_.read(message.data(), message_length);
+    
+        if (infile_.gcount() == message_length) {
+            if (message_type == MessageType::Incoming) {
+                messages.push_back(message);
+                previous_message_time_ = current_message_time;
+            }
+        } else if (infile_.gcount() > 0) {
+            close();
+            std::cerr << "Error reading message from playback file (incomplete read).\n";
         }
-        previous_message_time_ = current_message_time;
-    } else if (infile_.gcount() > 0) {
-        close();
-        std::cerr << "Error reading message from playback file (incomplete read).\n";
-    }
+        if (!infile_.eof()) {
+            infile_.read(reinterpret_cast<char*>(&next_message_time_), sizeof(next_message_time_));
+        }
+    };
 }
