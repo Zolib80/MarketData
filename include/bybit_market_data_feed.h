@@ -34,7 +34,6 @@ private:
     MarketDataSource* data_source_;
     std::vector<const Instrument*> instruments_to_subscribe_;
     MessageRecorder* message_recorder_ = nullptr;
-    bool is_playback_finished_ = false;
 
     inline static const std::string PING_MESSAGE = R"({"op": "ping"})";
     static const int PING_INTERVAL_SECS = 20;

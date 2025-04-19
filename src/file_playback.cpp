@@ -5,17 +5,15 @@
 #include <fstream>
 #include <sstream>
 
-FilePlayback::FilePlayback(const std::string& filename) : filename_(filename) {}
-
-FilePlayback::~FilePlayback() {
-    close();
-}
-
-bool FilePlayback::connect() {
+FilePlayback::FilePlayback(EventLoop& event_loop, const std::string& filename) 
+    : event_loop_(event_loop) 
+    , filename_(filename) 
+{
     infile_.open(filename_, std::ios::binary);
     if (!infile_.is_open()) {
         std::cerr << "Error opening file for playback: " << filename_ << '\n';
-        return false;
+        event_loop_.stop();
+        return;
     }
 
     uint32_t magic_number_read;
@@ -24,21 +22,21 @@ bool FilePlayback::connect() {
     timestamp last_message_time_read;
 
     infile_.read(reinterpret_cast<char*>(&magic_number_read), sizeof(magic_number_read));
-    
+
     if (magic_number_read != MAGIC_NUMBER) {
         std::cerr << "Error: Invalid magic number in playback file.\n";
         close();
-        return false;
+        return;
     }
 
     infile_.read(reinterpret_cast<char*>(&version_number_read), sizeof(version_number_read));
-    
+
     if (version_number_read != VERSION_NUMBER) {
         std::cerr << "Error: Incompatible version number in playback file.\n";
         close();
-        return false;
+        return;
     }
-    
+
     infile_.read(reinterpret_cast<char*>(&first_message_time_read), sizeof(first_message_time_read));
     infile_.read(reinterpret_cast<char*>(&last_message_time_read), sizeof(last_message_time_read));
     infile_.read(reinterpret_cast<char*>(&next_message_time_), sizeof(next_message_time_));
@@ -46,7 +44,13 @@ bool FilePlayback::connect() {
     first_message_time_ = first_message_time_read;
     is_connected_ = true;
     std::cout << "Connected to playback file: " << filename_ << '\n';
-    is_running_ = true; 
+}
+
+FilePlayback::~FilePlayback() {
+    close();
+}
+
+bool FilePlayback::connect() {
     return true;
 }
 
@@ -54,8 +58,8 @@ void FilePlayback::close() {
     if (infile_.is_open()) {
         infile_.close();
     }
+    event_loop_.stop();
     is_connected_ = false;
-    is_running_ = false; 
 }
 
 void FilePlayback::send(const std::string& message) {
@@ -67,7 +71,6 @@ void FilePlayback::recv(std::vector<std::string>& messages) {
     messages.clear();
 
     if (!infile_.is_open() || infile_.eof()) {
-        is_running_ = false;
         close();
         return;
     }

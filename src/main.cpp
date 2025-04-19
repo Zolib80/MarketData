@@ -34,7 +34,7 @@ int main() {
     
     if (is_replay) {
         filename = std::format("bybit_live_20250417_150141.977928174.zbmd");
-        data_source_ptr = std::make_unique<FilePlayback>(filename);
+        data_source_ptr = std::make_unique<FilePlayback>(event_loop, filename);
     } else {
         auto now = std::chrono::system_clock::now();
         filename = std::format("bybit_live_{:%Y%m%d_%H%M%S}.zbmd", now);

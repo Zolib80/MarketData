@@ -30,12 +30,6 @@ void BybitMarketDataFeed::run() {
         return;
     }
 
-    if (is_playback_finished_) {
-        std::cout << "Playback already finished. Finishing event loop.\n";
-        event_loop_.stop();
-        return;
-    }
-
     if (!data_source_->is_connected()) {
         if (data_source_->connect()) {
             std::cout << "Connected to Bybit.\n";
@@ -62,11 +56,6 @@ void BybitMarketDataFeed::run() {
     }
 
     data_source_->recv(received_messages_buffer_);
-    if (received_messages_buffer_.empty() && !data_source_->is_connected()) {
-        is_playback_finished_ = true;
-        std::cout << "Playback completed.\n";
-        return;
-    }
     for (const auto& rawMessage : received_messages_buffer_) {
         if (message_recorder_) {
             message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Incoming, rawMessage);
