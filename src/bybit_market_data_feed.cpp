@@ -31,29 +31,31 @@ void BybitMarketDataFeed::run() {
     }
 
     if (!data_source_->is_connected()) {
-        if (data_source_->connect()) {
-            std::cout << "Connected to Bybit.\n";
-
-            nlohmann::json subscribe_message_json;
-            subscribe_message_json["op"] = "subscribe";
-            subscribe_message_json["args"] = nlohmann::json::array();
-            for (const Instrument* instrument : instruments_to_subscribe_) {
-                subscribe_message_json["args"].push_back("orderbook.50." + instrument->name_);
-                instrument_map_[instrument->name_] = instrument;
-            }
-            std::string subscribe_message = subscribe_message_json.dump();
-            std::cout << "Subscribing to: " << subscribe_message << '\n';
-            if (message_recorder_) {
-                message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Outgoing, subscribe_message);
-            }
-            data_source_->send(subscribe_message);
-            
-            return;
-        } else {
-            std::cerr << "Failed to connect to Bybit.\n";
-            return;
+        if (is_connected_) {
+            is_connected_ = false;
+            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
         }
-    }
+        data_source_->connect();
+        return;
+    } else if (!is_connected_) {
+        is_connected_ = true;
+        message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Connect, "");
+        std::cout << "Connected to Bybit.\n";
+
+        nlohmann::json subscribe_message_json;
+        subscribe_message_json["op"] = "subscribe";
+        subscribe_message_json["args"] = nlohmann::json::array();
+        for (const Instrument* instrument : instruments_to_subscribe_) {
+            subscribe_message_json["args"].push_back("orderbook.50." + instrument->name_);
+            instrument_map_[instrument->name_] = instrument;
+        }
+        std::string subscribe_message = subscribe_message_json.dump();
+        std::cout << "Subscribing to: " << subscribe_message << '\n';
+        if (message_recorder_) {
+            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Outgoing, subscribe_message);
+        }
+        data_source_->send(subscribe_message);
+    }    
 
     data_source_->recv(received_messages_buffer_);
     for (const auto& rawMessage : received_messages_buffer_) {

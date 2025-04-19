@@ -7,8 +7,10 @@
 #include <vector>
 
 enum class MessageType : uint8_t {
-    Incoming = 0,
-    Outgoing = 1,
+    Connect = 0,
+    Disconnect,
+    Incoming,
+    Outgoing,
 };
 
 class MessageRecorder {

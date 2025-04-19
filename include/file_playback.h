@@ -26,7 +26,6 @@ private:
     std::string filename_;
     bool is_connected_ = false;
     timestamp first_message_time_;
-    timestamp previous_message_time_;
     timestamp next_message_time_;
     std::deque<std::string> message_buffer_;
 };

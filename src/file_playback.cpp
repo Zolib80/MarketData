@@ -90,7 +90,6 @@ void FilePlayback::recv(std::vector<std::string>& messages) {
         if (infile_.gcount() == message_length) {
             if (message_type == MessageType::Incoming) {
                 messages.push_back(message);
-                previous_message_time_ = current_message_time;
             }
         } else if (infile_.gcount() > 0) {
             close();
