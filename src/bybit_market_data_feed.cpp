@@ -156,9 +156,6 @@ void BybitMarketDataFeed::apply_delta(OrderBook& order_book, const nlohmann::jso
 
 void BybitMarketDataFeed::record_message(MessageType type, const std::string& message) {
     if (ring_buffer_) {
-        ring_buffer_->try_write(event_loop_.get_current_time(), type, message);
-        // Ha try_write false-ot ad vissza (puffer tele), az eldobott üzeneteket a ring buffer kezeli.
-        // Itt esetleg logolhatnánk, ha szükséges.
-        // std::cerr << "Warning: Message dropped due to full ring buffer.\n";
+        ring_buffer_->write(event_loop_.get_current_time(), type, message);
     }
 }

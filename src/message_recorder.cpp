@@ -18,51 +18,56 @@ MessageRecorder::~MessageRecorder() {
 }
 
 void MessageRecorder::recorder_thread_func() {
-    std::ofstream outfile_(filename_, std::ios::binary);
-    if (!outfile_.is_open()) {
+    std::ofstream outfile(filename_, std::ios::binary);
+    if (!outfile.is_open()) {
         std::cerr << "Error opening file for recording: " << filename_ << '\n';
         return;
     }
 
-    outfile_.write(reinterpret_cast<const char*>(&MAGIC_NUMBER), sizeof(MAGIC_NUMBER));
-    outfile_.write(reinterpret_cast<const char*>(&VERSION_NUMBER), sizeof(VERSION_NUMBER));
-    timestamp first_message_ts{};
-    timestamp last_message_ts{};
-    outfile_.write(reinterpret_cast<const char*>(&first_message_ts), sizeof(first_message_ts));
-    outfile_.write(reinterpret_cast<const char*>(&last_message_ts), sizeof(last_message_ts));
+    set_record_header(outfile);
     bool first_message = true;
-
-    auto processor = [&](timestamp ts, MessageType type, std::string_view message) {
-        if (first_message) {
-            first_message_ts = ts;
-            outfile_.seekp(sizeof(MAGIC_NUMBER) + sizeof(VERSION_NUMBER));
-            outfile_.write(reinterpret_cast<const char*>(&first_message_ts), sizeof(first_message_ts));
-            outfile_.seekp(0, std::ios::end);
-            first_message = false;
-        }
-        record_message(outfile_, ts, type, message);
-        last_message_ts = ts;
-    };
+    timestamp last_message_ts{};
 
     while (!stop_flag_) {
-        if (!ring_buffer_.try_read(processor)) {
-            std::this_thread::yield();
+        if (auto data = ring_buffer_.read_next(read_offset_)) {
+            const auto& [header, message] = data.value();
+            if (first_message) {
+                start_recording(outfile, header);
+                first_message = false;
+            }
+            record_message(outfile, header, message);
+            last_message_ts = header.timestamp;
+        } else {
+            std::this_thread::yield(); // Várakozás, ha nincs mit olvasni
         }
     }
 
     if (!first_message) {
-        finalize_recording(outfile_, last_message_ts);
+        finalize_recording(outfile, last_message_ts);
     }
-    outfile_.close();
+    outfile.close();
     std::cout << "Recorder thread finished.\n";
 }
 
-void MessageRecorder::record_message(std::ofstream& outfile, const timestamp& ts, MessageType type, std::string_view message) {
-    outfile.write(reinterpret_cast<const char*>(&ts), sizeof(ts));
-    outfile.write(reinterpret_cast<const char*>(&type), sizeof(type));
-    uint32_t message_length = static_cast<uint32_t>(message.length());
-    outfile.write(reinterpret_cast<const char*>(&message_length), sizeof(message_length));
-    outfile.write(message.data(), message_length);
+void MessageRecorder::set_record_header(std::ofstream &outfile) {
+    timestamp null_time{};
+    outfile.write(reinterpret_cast<const char *>(&MAGIC_NUMBER), sizeof(MAGIC_NUMBER));
+    outfile.write(reinterpret_cast<const char *>(&VERSION_NUMBER), sizeof(VERSION_NUMBER));
+    outfile.write(reinterpret_cast<const char *>(&null_time), sizeof(null_time));
+    outfile.write(reinterpret_cast<const char *>(&null_time), sizeof(null_time));
+}
+
+void MessageRecorder::start_recording(std::ofstream &outfile, const QueueHeader &header) {
+    outfile.seekp(sizeof(MAGIC_NUMBER) + sizeof(VERSION_NUMBER));
+    outfile.write(reinterpret_cast<const char *>(&header.timestamp), sizeof(header.timestamp));
+    outfile.seekp(0, std::ios::end);
+}
+
+void MessageRecorder::record_message(std::ofstream& outfile, const QueueHeader& header, std::string_view message) {
+    outfile.write(reinterpret_cast<const char*>(&header.timestamp), sizeof(header.timestamp));
+    outfile.write(reinterpret_cast<const char*>(&header.message_type), sizeof(header.message_type));
+    outfile.write(reinterpret_cast<const char*>(&header.message_length), sizeof(header.message_length));
+    outfile.write(message.data(), header.message_length);
 }
 
 void MessageRecorder::finalize_recording(std::ofstream& outfile, const timestamp& last_time) {

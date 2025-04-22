@@ -31,8 +31,11 @@ private:
     SpscByteRingBuffer& ring_buffer_;
     std::thread recorder_thread_;
     std::atomic<bool> stop_flag_{false};
-  
+    size_t read_offset_{0};
+
     void recorder_thread_func();
-    void record_message(std::ofstream& outfile, const timestamp& current_time, MessageType message_type, std::string_view message);
+    void set_record_header(std::ofstream& outfile);
+    void start_recording(std::ofstream& outfile, const QueueHeader &header);
+    void record_message(std::ofstream& outfile, const QueueHeader& header, std::string_view message);
     void finalize_recording(std::ofstream& outfile, const timestamp& last_time);
 };

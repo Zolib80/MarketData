@@ -23,16 +23,13 @@ public:
     SpscByteRingBuffer(size_t capacity);
     ~SpscByteRingBuffer() = default;
 
-    bool try_write(timestamp ts, MessageType type, std::string_view message);
-    bool try_read(std::function<void(timestamp, MessageType, std::string_view)> processor);
-    size_t get_dropped_message_count() const { return dropped_message_count.load(std::memory_order_relaxed); }
+    void write(timestamp ts, MessageType type, std::string_view message);
+    std::optional<std::pair<QueueHeader, std::string_view>> read_next(size_t& current_read_offset);
 
 private:
     std::unique_ptr<std::byte[]> buffer_;
     size_t capacity_;
     std::atomic<size_t> write_index{0};
-    std::atomic<size_t> read_index{0};
-    std::atomic<size_t> dropped_message_count{0};
 
     static constexpr size_t HEADER_SIZE = sizeof(QueueHeader);
 };
