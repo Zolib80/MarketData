@@ -1,21 +1,20 @@
 #pragma once
 
+#include "spsc_byte_ring_buffer.h"
 #include "market_data_constants.h"
 #include "market_data_time.h"
+#include "message_type.h"
 
+#include <atomic>
 #include <fstream>
-#include <vector>
+#include <functional>
+#include <string>
+#include <thread>
 
-enum class MessageType : uint8_t {
-    Connect = 0,
-    Disconnect,
-    Incoming,
-    Outgoing,
-};
 
 class MessageRecorder {
 public:
-    MessageRecorder(const std::string& filename);
+    MessageRecorder(const std::string& filename, SpscByteRingBuffer& ring_buffer);
     ~MessageRecorder();
 
     // Disable copy semantics
@@ -23,14 +22,17 @@ public:
     MessageRecorder& operator=(const MessageRecorder&) = delete;
 
     // Disable move semantics
-    MessageRecorder(MessageRecorder&&) = delete;
+    MessageRecorder(MessageRecorder&&) = delete; 
     MessageRecorder& operator=(MessageRecorder&&) = delete;
 
-    void record_message(const timestamp& current_time, MessageType message_type, const std::string& message);
-    void finalize_recording(const timestamp& last_time);
-
+    
 private:
-    std::ofstream outfile_;
-
-    bool is_first_message_ = true;
+    std::string filename_;
+    SpscByteRingBuffer& ring_buffer_;
+    std::thread recorder_thread_;
+    std::atomic<bool> stop_flag_{false};
+  
+    void recorder_thread_func();
+    void record_message(std::ofstream& outfile, const timestamp& current_time, MessageType message_type, std::string_view message);
+    void finalize_recording(std::ofstream& outfile, const timestamp& last_time);
 };

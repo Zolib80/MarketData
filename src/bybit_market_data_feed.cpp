@@ -1,6 +1,7 @@
 #include "bybit_market_data_feed.h"
 #include "event_loop.h"
 #include "order_book.h"
+#include "spsc_byte_ring_buffer.h" 
 #include "web_socket.h"
 
 #include <../libs/ixwebsocket/IXWebSocket.h>
@@ -10,20 +11,15 @@ BybitMarketDataFeed::BybitMarketDataFeed(
     EventLoop& event_loop,
     MarketDataSource* data_source,
     std::vector<const Instrument*>&& instruments_to_subscribe,
-    MessageRecorder* recorder)
+    SpscByteRingBuffer* ring_buffer)
     : event_loop_(event_loop)
     , order_books_()
     , data_source_(data_source)
     , instruments_to_subscribe_(std::move(instruments_to_subscribe))
-    , message_recorder_(recorder) 
+    , ring_buffer_(ring_buffer)
 {}
 
-BybitMarketDataFeed::~BybitMarketDataFeed()
-{
-    if (message_recorder_) {
-        message_recorder_->finalize_recording(event_loop_.get_current_time());
-    }
-}
+BybitMarketDataFeed::~BybitMarketDataFeed() { }
 
 void BybitMarketDataFeed::run() {
     if (!data_source_) {
@@ -36,9 +32,7 @@ void BybitMarketDataFeed::run() {
     if (data_source_connected && !is_connected_) {
         event_loop_.remove_event(this);
         is_connected_ = true;
-        if(message_recorder_) {
-            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Connect, "");
-        }
+        record_message(MessageType::Connect, "");
         std::cout << "Connected to Bybit.\n";
 
         nlohmann::json subscribe_message_json;
@@ -50,18 +44,13 @@ void BybitMarketDataFeed::run() {
         }
         std::string subscribe_message = subscribe_message_json.dump();
         std::cout << "Subscribing to: " << subscribe_message << '\n';
-        if (message_recorder_) {
-            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Outgoing, subscribe_message);
-        }
+        record_message(MessageType::Outgoing, subscribe_message);
         data_source_->send(subscribe_message);
     }    
 
     data_source_->recv(received_messages_buffer_);
     for (const auto& rawMessage : received_messages_buffer_) {
-        if (message_recorder_) {
-            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Incoming, rawMessage);
-        }
-        // std::cout << "Received message: " << rawMessage << '\n';
+        record_message(MessageType::Incoming, rawMessage);
         nlohmann::json jsonMessage = nlohmann::json::parse(rawMessage);
         if (jsonMessage.contains("topic")) {
             std::string topic = jsonMessage["topic"].get<std::string>();
@@ -104,9 +93,7 @@ void BybitMarketDataFeed::run() {
 
     if (received_messages_buffer_.empty() && !data_source_connected && is_connected_) {
         is_connected_ = false;
-        if(message_recorder_) {
-            message_recorder_->record_message(event_loop_.get_current_time(), MessageType::Disconnect, "");
-        }
+        record_message(MessageType::Disconnect, "");
         event_loop_.schedule_repeating_event(this, 0_us, 5_s, [this]() {
             data_source_->connect();
         });
@@ -165,4 +152,13 @@ void BybitMarketDataFeed::apply_delta(OrderBook& order_book, const nlohmann::jso
         }
     }
     std::cout << "Delta applied for " << order_book.instrument_->name_ << ".\n";
+}
+
+void BybitMarketDataFeed::record_message(MessageType type, const std::string& message) {
+    if (ring_buffer_) {
+        ring_buffer_->try_write(event_loop_.get_current_time(), type, message);
+        // Ha try_write false-ot ad vissza (puffer tele), az eldobott üzeneteket a ring buffer kezeli.
+        // Itt esetleg logolhatnánk, ha szükséges.
+        // std::cerr << "Warning: Message dropped due to full ring buffer.\n";
+    }
 }
